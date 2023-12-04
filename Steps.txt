@@ -115,3 +115,57 @@ Now you are able to access the pods successfully (;
 
 
 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  RBAC END XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  Network Policy Start  XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+# Implementing Security
+
+# Change the context back to admin
+- kubectl config use-context kubernetes-admin@kubernetes
+
+# Create ntw policy in Microservice1
+- cd Microservice1
+
+- vi microservice1-network-policy.yaml
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: microservice1-is-allowed-only-from-foo-label-app
+spec:
+  policyTypes:
+  - Ingress
+  podSelector:
+    matchLabels:
+      app: microservice1
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: foo
+    ports:
+    - protocol: TCP
+      port: 5000
+      endPort: 5000  # Allow traffic specifically to port 5000
+    - protocol: TCP
+      port: 80  # Allow other general traffic to port 80
+
+
+# First try without applying the Networking Policy
+- kubectl run -l app=microservice2 --image=alpine --restart=Never --rm -i -t test-microservice2service:5000/listproducts
+- wget -qO- --timeout=2 http://microservice1-service/listproducts
+  
+
+- kubectl apply -f microservice1-network-policy.yaml
+
+
+# Now try after applying the Networking Policy
+- kubectl run -l app=microservice2 --image=alpine --restart=Never --rm -i -t test-microservice2service:5000/listproducts
+- wget -qO- --timeout=2 http://microservice1-service/listproducts
+
+
+
+# Don't forget to remove those policies, otherwise microservices can't communicate
+- kubectl delete -f microservice1-network-policy.yaml
+- rm microservice1-network-policy.yaml
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  Network Policy END  XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
