@@ -1,0 +1,117 @@
+###################################################  RBAC Start ###############################################################
+
+References
+-> https://github.com/vilasvarghese/docker-k8s/blob/master/yaml/rbac/instructions.txt
+-> https://www.youtube.com/watch?v=ECTxTONWgw8
+-> https://github.com/pelthepu/Kubernetes/tree/master/resources/rbac
+
+
+
+- # Declare the name of the Kubernetes user we're going to support by setting it to an environment variable
+    - export ADITYA=aditya
+- cat $HOME/.kube/config
+- # Generate user pv key using openssl
+    - openssl genrsa -out aditya.key 2048
+- # Certificate signing requiest(CSR) for the key created above
+    - openssl req -new -key aditya.key -out aditya.csr -subj "/CN=${ADITYA}/O=devs/O=tech-leads"
+- # Check for the csr file and key
+    - ls | grep aditya
+- # Now this csr must be signed with the certifacte authority which we are doing below, after that certificate will be generated.
+    - sudo openssl x509 -req -in aditya.csr -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key -CAcreateserial -out aditya.crt -days 500
+    
+- # Make a directory, $HOME/.certs and move the files, dicktracy.crt and dicktracy.key into the directory $HOME/.certs.
+    - mkdir -p $HOME/.certs && mv aditya.crt aditya.key $HOME/.certs
+
+- Take a look to make sure the certificates got copied in:
+    - ls -lh $HOME/.cert
+
+- Take a look at config file and context
+    - kubectl config view
+    - kubectl config get-contexts
+
+- # Add the user to the cluster
+    - kubectl config set-credentials ${ADITYA}@kubernetes --client-certificate=$HOME/.certs/${ADITYA}.crt --client-key=$HOME/.certs/${ADITYA}.key --embed-certs=true
+
+
+- # Create the context and set the namespace as default
+    - kubectl config set-context ${ADITYA}@kubernetes --cluster=kubernetes --user=${ADITYA}@kubernetes --namespace=default
+
+    # For taking a look at contexts
+        - kubectl config get-contexts     # * indicates we are working with that context 
+
+    # For switching the context
+        - kubectl config use-context <context-name>
+
+    After switching the context when you will try to do "kubectl get pod" you will receive the error given below:
+    Error from server (Forbidden): pods is forbidden: User "aditya" cannot list resource "pods" in API group 
+     
+    # but don't forget to again switch to that admin user otherwise you will not be able to apply the files and other operations.
+
+##### Start giving permission to the user(aditya)
+
+xxxxxxxxxxxxxxxx ROLE START xxxxxxxxxxxxxxxx
+- vi role.yaml     
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+rules:
+- apiGroups: [""] # "" indicates the core API group
+  verbs: ["get", "watch", "list"]                      #so anyone with this role can get, watch and list the pods
+  resources: ["pods", "pods/log"]
+  # resourceNames: ["nginx"]
+
+
+
+- kubectl apply -f role.yaml
+  
+   # Checking the roles
+    - kubectl get roles
+xxxxxxxxxxxxxxxx ROLE END xxxxxxxxxxxxxx
+
+xxxxxxxxxxxxxxxx ROLE BINDING START xxxxxxxxxxxxxx
+
+# USER + ROLE = ROLE BINDING    
+  Connecting user to the role
+
+- vi role-binding.yaml
+
+
+apiVersion: rbac.authorization.k8s.io/v1
+# This role binding allows user "aditya@kubernetes" to read pods in the "default" namespace.
+# You need to already have a Role named "pod-reader" in that namespace.
+kind: RoleBinding
+metadata:
+  name: read-pods
+subjects:
+# You can specify more than one "subject"
+- kind: User
+  name: aditya # "name" is case sensitive
+  apiGroup: rbac.authorization.k8s.io
+- kind: ServiceAccount
+  name: test-sa
+roleRef:
+  # "roleRef" specifies the binding to a Role / ClusterRole
+  kind: Role #this must be Role or ClusterRole
+  name: pod-reader # this must match the name of the Role or ClusterRole you wish to bind to
+  apiGroup: rbac.authorization.k8s.io
+# roleRef:
+#   kind: ClusterRole
+#   name: secret-reader
+#   apiGroup: rbac.authorization.k8s.io
+
+
+- kubectl apply -f role-binding.yaml
+
+xxxxxxxxxxxxxxxx ROLE BINDING END xxxxxxxxxxxxxx
+
+
+# Now you can check by switching the context.
+- kubectl config use-context aditya@kubernetes
+- kubectl get pods
+
+Now you are able to access the pods successfully (;
+
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  RBAC END XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
